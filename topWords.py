@@ -2,12 +2,17 @@ import requests
 from bs4 import BeautifulSoup
 from collections import Counter
 import matplotlib.pyplot as plt
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def fetch_text(url):
-    response = requests.get(url)
-    response.raise_for_status()  # Перевірка на успішний запит
-    soup = BeautifulSoup(response.text, 'html.parser')
-    return soup.get_text()
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  
+        soup = BeautifulSoup(response.text, 'html.parser')
+        return soup.get_text()
+    except requests.RequestException as e:
+        print(f"Error fetching {url}: {e}")
+        return ""
 
 def map_reduce(text):
     words = text.split()
@@ -28,8 +33,26 @@ def visualize_top_words(word_counts, top_n=10):
     plt.xticks(rotation=45)
     plt.show()
 
+def main(urls, top_n=20):
+    texts = []
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_url = {executor.submit(fetch_text, url): url for url in urls}
+        for future in as_completed(future_to_url):
+            url = future_to_url[future]
+            try:
+                text = future.result()
+                texts.append(text)
+            except Exception as exc:
+                print(f"{url} generated an exception: {exc}")
+
+    combined_text = " ".join(texts)
+    word_counts = map_reduce(combined_text)
+    visualize_top_words(word_counts, top_n=top_n)
+
 if __name__ == "__main__":
-    url = 'https://en.wikipedia.org/wiki/JavaScript'
-    text = fetch_text(url)
-    word_counts = map_reduce(text)
-    visualize_top_words(word_counts, top_n=20)
+    urls = [
+        'https://en.wikipedia.org/wiki/JavaScript',
+        'https://en.wikipedia.org/wiki/Python_(programming_language)',
+        'https://en.wikipedia.org/wiki/Java_(programming_language)'
+    ]
+    main(urls, top_n=20)
